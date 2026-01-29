@@ -68,3 +68,6 @@ powa-chromium_profile_*/
 
 # Burp Suite
 burp/burpbrowser-profile
+
+# Local agent instructions
+AGENTS.md
