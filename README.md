@@ -36,6 +36,8 @@ This is the simplest way to take your Codex, Claude Code, and OpenCode workflows
    - Windows: `alices-mirror_windows.exe`
 4. Open `http://<host-ip>:3002` in a browser.
 
+You can close the browser, reopen it later, and even switch devices (desktop, phone, tablet). The terminal session stays the same. It is common to start an agent on your desktop, check progress from your phone while walking the dog, and then review the final state on a tablet before watching a movie.
+
 If you want other devices on your LAN to connect, set the bind list to your host IP or to all interfaces:
 
 ```bash
