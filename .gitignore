@@ -1,0 +1,70 @@
+# Go
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.prof
+*.pprof
+coverage.out
+
+# Node / TypeScript
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-debug.log*
+.eslintcache
+.next/
+dist/
+build/
+lib/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.python-version
+venv/
+.venv/
+.env
+.envrc
+pip-wheel-metadata/
+build/
+dist/
+.eggs/
+*.egg-info/
+.tox/
+pytest_cache/
+.coverage
+coverage.xml
+
+# uv
+.uv/
+.uv_cache/
+
+# Docker
+.docker/
+.dockerignore.generated
+Dockerfile.*.tmp
+*.tar
+
+# powa-chromium profiles
+powa-chromium_profile/
+powa-chromium_profile_*/
+
+# Local tooling profiles
+**/profile/
+**/xdg_config/
+**/xdg_cache/
+**/xdg_runtime/
+**/logs/
+**/cache/
+
+# Burp Suite
+burp/burpbrowser-profile

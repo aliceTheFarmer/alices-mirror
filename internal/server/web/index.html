@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>alices mirror terminal</title>
+    <link rel="stylesheet" href="/vendor/xterm.css" />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <div id="topbar">
+        <div class="title">alices mirror</div>
+        <div id="status">Connecting...</div>
+      </div>
+      <div id="terminal"></div>
+      <div id="keybar" class="keybar">
+        <button data-key="esc">Esc</button>
+        <button data-key="tab">Tab</button>
+        <div class="arrow-cluster" role="group" aria-label="Arrow keys">
+          <button data-key="up" class="arrow" aria-label="Up">&uarr;</button>
+          <button data-key="left" class="arrow" aria-label="Left">&larr;</button>
+          <button data-key="down" class="arrow" aria-label="Down">&darr;</button>
+          <button data-key="right" class="arrow" aria-label="Right">&rarr;</button>
+        </div>
+        <button data-key="backspace">Bksp</button>
+        <button data-key="enter">Enter</button>
+        <button data-key="shift-enter" class="wide">Shift+Ent</button>
+        <button
+          data-key="md-toggle"
+          class="toggle"
+          aria-expanded="false"
+          aria-controls="md-submenu"
+        >
+          .md
+        </button>
+        <button data-key="ctrlc">Ctrl+C</button>
+        <button data-key="copy">Copy</button>
+        <button data-key="paste">Paste</button>
+        <button data-key="ctrlz">Ctrl+Z</button>
+        <button data-key="ctrly">Ctrl+Y</button>
+        <button data-key="clear">Clear</button>
+        <div id="md-submenu" class="keybar-submenu" aria-hidden="true">
+          <button data-key="md-h1">H1</button>
+          <button data-key="md-h2">H2</button>
+          <button data-key="md-inline-code">&#96;</button>
+          <button data-key="md-codeblock">```</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="confirm-modal" class="modal hidden">
+      <div class="modal-card">
+        <h2>Confirm shell exit</h2>
+        <p>This will close the current shell and immediately respawn a fresh one.</p>
+        <div class="modal-actions">
+          <button id="confirm-exit" class="primary">Confirm</button>
+          <button id="cancel-exit" class="ghost">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <textarea id="paste-proxy" aria-hidden="true"></textarea>
+
+    <script src="/vendor/xterm.js"></script>
+    <script src="/vendor/xterm-addon-fit.js"></script>
+    <script src="/app.js"></script>
+  </body>
+</html>
