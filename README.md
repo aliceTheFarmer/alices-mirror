@@ -21,6 +21,14 @@ Serve a shared, persistent terminal over HTTP on your LAN with a mobile-friendly
 - Run **Codex**, **Claude Code**, **OpenCode**, or any other CLI agent from any device.
 - Works perfectly with **Cloudflare Tunnel** so you can reach your tools anywhere you want.
 
+## Why not tmux + SSH?
+tmux + SSH is great, but Alice's Mirror is better when you want a shared, browser-first experience:
+- **Zero client setup**: open a URL instead of installing SSH keys or terminal apps.
+- **Mobile-first controls**: key bar, clipboard-aware copy/paste, and touch-friendly UI.
+- **Shared session**: multiple clients can watch or interact with the same PTY in real time.
+- **Discovery built in**: optional LAN discovery (`--visible`) makes it easy to find on your network.
+- **Easy remote access**: pair with a tunnel (e.g., Cloudflare Tunnel) without exposing SSH.
+
 ## AI Agent Workflows (References)
 Alice's Mirror is just a terminal, so you can run the exact tools you already rely on:
 - **Codex (codex)**
