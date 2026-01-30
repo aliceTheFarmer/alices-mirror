@@ -152,6 +152,7 @@ If you want Codex, Claude Code, OpenCode, or any other terminal workflow to be a
 ## Platform Support
 - Linux (shared Bash PTY)
 - Windows (PowerShell or cmd via `--shell`)
+- Android (server build for mobile) — APK coming soon on Google Play.
 
 ## License
 MIT. See `LICENSE`.
