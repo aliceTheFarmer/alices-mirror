@@ -29,6 +29,15 @@ tmux + SSH is great, but Alice's Mirror is better when you want a shared, browse
 - **Discovery built in**: optional LAN discovery (`--visible`) makes it easy to find on your network.
 - **Easy remote access**: pair with a tunnel (e.g., Cloudflare Tunnel) without exposing SSH.
 
+## Support
+If Alice's Mirror helps you, you can support the project with a PayPal donation:
+
+[Donate via PayPal](https://www.paypal.com/qrcodes/p2pqrc/EDT7T64XFGPSL)
+
+<p align="left">
+  <img src="assets/paypal-qr.jpeg" alt="PayPal QR code" width="220">
+</p>
+
 ## AI Agent Workflows (References)
 Alice's Mirror is just a terminal, so you can run the exact tools you already rely on:
 - **Codex (codex)**
