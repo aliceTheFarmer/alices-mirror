@@ -3,7 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="alices-mirror-alias" content="__ALICES_MIRROR_ALIAS__" />
     <title>alices mirror terminal</title>
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/icon-16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="stylesheet" href="/vendor/xterm.css" />
     <link rel="stylesheet" href="/style.css" />
   </head>
@@ -23,7 +28,6 @@
           <button data-key="down" class="arrow" aria-label="Down">&darr;</button>
           <button data-key="right" class="arrow" aria-label="Right">&rarr;</button>
         </div>
-        <button data-key="backspace">Bksp</button>
         <button data-key="enter">Enter</button>
         <button data-key="shift-enter" class="wide">Shift+Ent</button>
         <button
@@ -34,12 +38,13 @@
         >
           .md
         </button>
+        <button data-key="clear">Clear</button>
         <button data-key="ctrlc">Ctrl+C</button>
         <button data-key="copy">Copy</button>
         <button data-key="paste">Paste</button>
         <button data-key="ctrlz">Ctrl+Z</button>
         <button data-key="ctrly">Ctrl+Y</button>
-        <button data-key="clear">Clear</button>
+        <button data-key="reset">Reset</button>
         <div id="md-submenu" class="keybar-submenu" aria-hidden="true">
           <button data-key="md-h1">H1</button>
           <button data-key="md-h2">H2</button>
@@ -51,8 +56,8 @@
 
     <div id="confirm-modal" class="modal hidden">
       <div class="modal-card">
-        <h2>Confirm shell exit</h2>
-        <p>This will close the current shell and immediately respawn a fresh one.</p>
+        <h2 id="confirm-title">Confirm shell exit</h2>
+        <p id="confirm-message">This will close the current shell and immediately respawn a fresh one.</p>
         <div class="modal-actions">
           <button id="confirm-exit" class="primary">Confirm</button>
           <button id="cancel-exit" class="ghost">Cancel</button>

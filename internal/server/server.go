@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io/fs"
 	"net"
 	"net/http"
@@ -28,12 +29,14 @@ type Config struct {
 	Addrs   []string
 	Session *terminal.Session
 	Auth    AuthConfig
+	Alias   string
 }
 
 type Server struct {
 	addrs   []string
 	session *terminal.Session
 	auth    AuthConfig
+	alias   string
 
 	clientsMu sync.Mutex
 	clients   map[*client]struct{}
@@ -91,6 +94,7 @@ func New(cfg Config) (*Server, error) {
 		addrs:   addrs,
 		session: cfg.Session,
 		auth:    cfg.Auth,
+		alias:   cfg.Alias,
 		clients: make(map[*client]struct{}),
 	}
 
@@ -235,9 +239,40 @@ func (c *client) readPump(s *Server) {
 }
 
 func (s *Server) handleControl(control controlMessage) {
-	if control.Type == "resize" {
+	switch control.Type {
+	case "resize":
 		_ = s.session.Resize(control.Cols, control.Rows)
+	case "reset":
+		remaining, err := s.session.Reset()
+		if err != nil || len(remaining) > 0 {
+			s.broadcastResetFailure(remaining, err)
+		}
 	}
+}
+
+func (s *Server) broadcastResetFailure(remaining []terminal.ProcessInfo, err error) {
+	title := "Reset failed"
+	lines := []string{"The shell could not be fully reset."}
+	if err != nil {
+		lines = append(lines, fmt.Sprintf("Reason: %s", err.Error()))
+	}
+	if len(remaining) > 0 {
+		lines = append(lines, "The following processes could not be terminated:")
+		for _, proc := range remaining {
+			name := strings.TrimSpace(proc.Name)
+			if name == "" {
+				name = "unknown"
+			}
+			lines = append(lines, fmt.Sprintf("PID %d - %s", proc.PID, name))
+		}
+	}
+
+	payload, _ := json.Marshal(map[string]string{
+		"type":    "reset-failed",
+		"title":   title,
+		"message": strings.Join(lines, "\n"),
+	})
+	s.broadcast(wsMessage{messageType: websocket.TextMessage, data: payload})
 }
 
 func (s *Server) addClient(c *client) {
@@ -296,9 +331,14 @@ func (s *Server) staticHandler() http.Handler {
 				http.Error(w, "Index not available", http.StatusInternalServerError)
 				return
 			}
+			alias := ""
+			if strings.TrimSpace(s.alias) != "" {
+				alias = html.EscapeString(s.alias)
+			}
+			content := strings.ReplaceAll(string(data), "__ALICES_MIRROR_ALIAS__", alias)
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write(data)
+			_, _ = w.Write([]byte(content))
 			return
 		}
 		fileServer.ServeHTTP(w, r)

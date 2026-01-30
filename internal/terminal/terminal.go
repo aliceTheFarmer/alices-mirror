@@ -18,17 +18,20 @@ type Config struct {
 }
 
 type Session struct {
-	mu       sync.Mutex
-	ptyFile  *os.File
-	cmd      *exec.Cmd
-	workDir  string
-	shell    string
-	buffer   *ringBuffer
-	outputCh chan []byte
-	statusCh chan string
-	lastCols int
-	lastRows int
-	writeMu  sync.Mutex
+	mu         sync.Mutex
+	ptyFile    *os.File
+	cmd        *exec.Cmd
+	workDir    string
+	shell      string
+	bashRCPath string
+	buffer     *ringBuffer
+	outputCh   chan []byte
+	statusCh   chan string
+	lastCols   int
+	lastRows   int
+	writeMu    sync.Mutex
+	closeOnce  sync.Once
+	closed     bool
 }
 
 func NewSession(cfg Config) (*Session, error) {
@@ -50,6 +53,23 @@ func NewSession(cfg Config) (*Session, error) {
 
 	go s.runLoop()
 	return s, nil
+}
+
+func CheckShell(workDir, shell string) error {
+	s := &Session{
+		workDir: workDir,
+		shell:   shell,
+	}
+	cmd, ptyFile, err := s.startShell()
+	if err != nil {
+		return err
+	}
+	_ = ptyFile.Close()
+	if cmd.Process != nil {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+	}
+	return nil
 }
 
 func (s *Session) Output() <-chan []byte {
@@ -98,8 +118,31 @@ func (s *Session) Resize(cols, rows int) error {
 	return pty.Setsize(ptyFile, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
 }
 
+func (s *Session) Close() {
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return
+	}
+	s.closed = true
+	cmd := s.cmd
+	ptyFile := s.ptyFile
+	s.mu.Unlock()
+
+	if ptyFile != nil {
+		_ = ptyFile.Close()
+	}
+	if cmd != nil && cmd.Process != nil {
+		_ = cmd.Process.Kill()
+	}
+}
+
 func (s *Session) runLoop() {
 	for {
+		if s.isClosed() {
+			s.closeChannels()
+			return
+		}
 		cmd, ptyFile, err := s.startShell()
 		if err != nil {
 			s.emitStatus(fmt.Sprintf("Shell start failed: %v", err))
@@ -119,8 +162,12 @@ func (s *Session) runLoop() {
 		_ = ptyFile.Close()
 		<-done
 
-		s.emitStatus("Shell exited. Respawning now.")
 		s.clearPTY()
+		if s.isClosed() {
+			s.closeChannels()
+			return
+		}
+		s.emitStatus("Shell exited. Respawning now.")
 	}
 }
 
@@ -141,6 +188,9 @@ func (s *Session) readLoop(ptyFile *os.File) {
 }
 
 func (s *Session) emitOutput(data []byte) {
+	if s.isClosed() {
+		return
+	}
 	select {
 	case s.outputCh <- data:
 	default:
@@ -148,6 +198,9 @@ func (s *Session) emitOutput(data []byte) {
 }
 
 func (s *Session) emitStatus(message string) {
+	if s.isClosed() {
+		return
+	}
 	select {
 	case s.statusCh <- message:
 	default:
@@ -166,6 +219,20 @@ func (s *Session) clearPTY() {
 	s.cmd = nil
 	s.ptyFile = nil
 	s.mu.Unlock()
+}
+
+func (s *Session) isClosed() bool {
+	s.mu.Lock()
+	closed := s.closed
+	s.mu.Unlock()
+	return closed
+}
+
+func (s *Session) closeChannels() {
+	s.closeOnce.Do(func() {
+		close(s.outputCh)
+		close(s.statusCh)
+	})
 }
 
 // ringBuffer keeps the last N bytes of output for new clients.

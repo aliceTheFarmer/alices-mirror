@@ -14,6 +14,11 @@
   --keyboard-offset: 0px;
 }
 
+:root.keybar-hidden {
+  --keybar: 0px;
+  --keyboard-offset: 0px;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -59,7 +64,7 @@ body {
 #terminal {
   flex: 1;
   min-height: 0;
-  padding: 8px 8px calc(8px + var(--keybar));
+  padding: 8px 8px calc(8px + var(--keybar) + var(--keyboard-offset));
   background: #0b0e13;
 }
 
@@ -86,6 +91,10 @@ body {
   border-top: 1px solid #1e2633;
   font-family: "Roboto", "Noto Sans", "IBM Plex Sans", "Segoe UI", sans-serif;
   z-index: 5;
+}
+
+.keybar-hidden .keybar {
+  display: none;
 }
 
 .keybar button {
@@ -220,6 +229,7 @@ body {
   margin: 0 0 16px 0;
   font-size: 13px;
   color: var(--muted);
+  white-space: pre-line;
 }
 
 .modal-actions {
