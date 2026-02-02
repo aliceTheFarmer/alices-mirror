@@ -10,7 +10,7 @@ Serve a shared, persistent terminal over HTTP on your LAN with a mobile-friendly
 </p>
 
 ## Status
-- v2.0.0 (LAN discovery, daemon mode, shell reset, title integration)
+- v2.0.1 (share mode, LAN discovery, daemon mode, shell reset, title integration)
 
 ## Highlights
 - Shared, persistent PTY session over HTTP and WebSocket with multiple clients.
@@ -140,11 +140,11 @@ There is no config file. Everything is controlled by flags:
 - `-h, --help` Show help and exit.
 - `-cw, --cwd=<path>` Start the shell in the specified working directory.
 - `-d, --daemon` Run the server in the background (prints PID and URLs).
-- `-sh, --share` Run the server in the background and attach this terminal to the shared shell.
+- `-s, --share` Run the server in the background and attach this terminal to the shared shell.
 - `-o, --origin=<ip1,ip2,...>` Bind to comma-separated IPs/hosts (default `127.0.0.1,192.168.1.121`).
 - `-P, --password=<password>` Set Basic Auth password (requires `--user`).
 - `-p, --port=<port>` Listen on port (default `3002`).
-- `-s, --shell=<shell>` Windows only: `powershell` or `cmd` (default `powershell`).
+- `-S, --shell=<shell>` Windows only: `powershell` or `cmd` (default `powershell`).
 - `-u, --user=<user>` Set Basic Auth user (requires `--password`).
 - `-vi, --visible` Advertise the server on the LAN for discovery.
 - `-y, --yolo` Disable auth entirely when present.

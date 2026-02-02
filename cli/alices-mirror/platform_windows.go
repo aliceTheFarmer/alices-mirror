@@ -10,7 +10,7 @@ import (
 
 func platformSpecs() []flagSpec {
 	return []flagSpec{
-		{Long: "shell", Short: "s", ExpectsValue: true, IsBool: false},
+		{Long: "shell", Short: "S", ExpectsValue: true, IsBool: false},
 	}
 }
 
@@ -36,5 +36,5 @@ func normalizePlatformShell(shell string) (string, error) {
 }
 
 func printPlatformHelp() {
-	fmt.Println("  -s, --shell=<shell>    Select Windows shell (powershell or cmd).")
+	fmt.Println("  -S, --shell=<shell>    Select Windows shell (powershell or cmd).")
 }

@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.0.1 - 2026-02-02
+- Added `-s, --share` to start the server in the background and attach this terminal to the shared shell.
+- Kept `-sh` as a backward-compatible alias for `--share`.
+- Windows: `--shell` shorthand is now `-S` (was `-s`).
+
 ## v2.0.0 - 2026-01-30
 - Added daemon mode (`--daemon`) to run the server in the background with a PID readout.
 - Added `--cwd` and `--alias` to control the working directory and display name.

@@ -25,6 +25,7 @@ var baseSpecs = []flagSpec{
 	{Long: "help", Short: "h", ExpectsValue: false, IsBool: true},
 	{Long: "cwd", Short: "cw", ExpectsValue: true, IsBool: false},
 	{Long: "daemon", Short: "d", ExpectsValue: false, IsBool: true},
+	{Long: "share", Short: "s", ExpectsValue: false, IsBool: true},
 	{Long: "share", Short: "sh", ExpectsValue: false, IsBool: true},
 	{Long: "origin", Short: "o", ExpectsValue: true, IsBool: false},
 	{Long: "password", Short: "P", ExpectsValue: true, IsBool: false},
@@ -248,7 +249,7 @@ func printHelp() {
 	fmt.Println("  -a, --alias=<alias>    Override the browser title host label.")
 	fmt.Println("  -cw, --cwd=<path>      Start the shell in the specified working directory.")
 	fmt.Println("  -d, --daemon           Run the server in the background.")
-	fmt.Println("  -sh, --share           Share this terminal session (starts server in background).")
+	fmt.Println("  -s, --share            Share this terminal session (starts server in background).")
 	fmt.Printf("  -o, --origin=<list>    Bind to comma-separated IPs/hosts (default %s).\n", defaultOrigins)
 	fmt.Println("  -P, --password=<password>  Set Basic Auth password (requires --user).")
 	fmt.Println("  -p, --port=<port>      Listen on port <port> (default 3002).")
