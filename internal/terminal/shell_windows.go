@@ -28,7 +28,7 @@ func (s *Session) startShell() (*exec.Cmd, *os.File, error) {
 	}
 
 	cmd.Dir = s.workDir
-	cmd.Env = os.Environ()
+	cmd.Env = dropEnvVar(os.Environ(), "ALICES_MIRROR_OWNER_TOKEN")
 
 	ptyFile, err := pty.Start(cmd)
 	if err != nil {
@@ -48,12 +48,15 @@ func (s *Session) startShell() (*exec.Cmd, *os.File, error) {
 }
 
 func buildCmdInitCommand() string {
-	return "prompt $E]0;alices-mirror^|$P^|cmd$E\\%PROMPT%"
+	return "if \"%ALICES_MIRROR_TITLE_PREFIX%\"==\"\" set \"ALICES_MIRROR_TITLE_PREFIX=alices-mirror\" & prompt $E]0;%ALICES_MIRROR_TITLE_PREFIX%^|$P^|cmd$E\\%PROMPT%"
 }
 
 func buildPowerShellInitScript() string {
 	lines := []string{
 		"$ErrorActionPreference = 'SilentlyContinue'",
+		"$script:__AlicesMirrorTitlePrefix = $env:ALICES_MIRROR_TITLE_PREFIX",
+		"if (-not $script:__AlicesMirrorTitlePrefix) { $script:__AlicesMirrorTitlePrefix = 'alices-mirror' }",
+		"$script:__AlicesMirrorTitlePrefix = $script:__AlicesMirrorTitlePrefix.Replace('|', '')",
 		"function global:__AlicesMirrorFormatCwd {",
 		"  $cwd = (Get-Location).Path",
 		"  $home = $HOME",
@@ -69,7 +72,8 @@ func buildPowerShellInitScript() string {
 		"  if (-not $proc) { $proc = '' }",
 		"  $safeCwd = $cwd.Replace('|', '')",
 		"  $safeProc = $proc.Replace('|', '')",
-		"  [Console]::Write(\"`e]0;alices-mirror|$safeCwd|$safeProc`a\")",
+		"  $safePrefix = $script:__AlicesMirrorTitlePrefix",
+		"  [Console]::Write(\"`e]0;$safePrefix|$safeCwd|$safeProc`a\")",
 		"}",
 		"function global:__AlicesMirrorSetTitle([string]$proc) {",
 		"  $cwd = __AlicesMirrorFormatCwd",

@@ -26,7 +26,8 @@ func (s *Session) startShell() (*exec.Cmd, *os.File, error) {
 		cmd = exec.Command(shell)
 	}
 	cmd.Dir = s.workDir
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+	env := dropEnvVar(os.Environ(), "ALICES_MIRROR_OWNER_TOKEN")
+	cmd.Env = append(env, "TERM=xterm-256color")
 	ptyFile, err := pty.Start(cmd)
 	if err != nil {
 		return nil, nil, err
@@ -86,14 +87,16 @@ func buildBashRC() string {
 		"",
 		"if [ -z \"${ALICES_MIRROR_PROMPT_INSTALLED:-}\" ]; then",
 		"  ALICES_MIRROR_PROMPT_INSTALLED=1",
-		"  __alices_mirror_title_prefix='alices-mirror|'",
+		"  __alices_mirror_title_prefix=\"${ALICES_MIRROR_TITLE_PREFIX:-alices-mirror}\"",
 		"",
 		"  __alices_mirror_emit_title() {",
 		"    local cwd=\"$1\"",
 		"    local proc=\"$2\"",
+		"    local prefix=\"$__alices_mirror_title_prefix\"",
 		"    cwd=${cwd//|/}",
 		"    proc=${proc//|/}",
-		"    printf '\\033]0;%s%s|%s\\007' \"$__alices_mirror_title_prefix\" \"$cwd\" \"$proc\"",
+		"    prefix=${prefix//|/}",
+		"    printf '\\033]0;%s|%s|%s\\007' \"$prefix\" \"$cwd\" \"$proc\"",
 		"  }",
 		"",
 		"  __alices_mirror_format_cwd() {",

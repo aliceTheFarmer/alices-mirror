@@ -26,25 +26,34 @@ type AuthConfig struct {
 }
 
 type Config struct {
-	Addrs   []string
-	Session *terminal.Session
-	Auth    AuthConfig
-	Alias   string
+	Addrs      []string
+	Session    *terminal.Session
+	Auth       AuthConfig
+	Alias      string
+	OwnerToken string
 }
 
 type Server struct {
-	addrs   []string
-	session *terminal.Session
-	auth    AuthConfig
-	alias   string
+	addrs      []string
+	session    *terminal.Session
+	auth       AuthConfig
+	alias      string
+	ownerToken string
 
 	clientsMu sync.Mutex
 	clients   map[*client]struct{}
+
+	ownerMu        sync.Mutex
+	ownerConnected bool
+
+	shutdownOnce sync.Once
+	shutdownFunc func()
 }
 
 type client struct {
-	conn *websocket.Conn
-	send chan wsMessage
+	conn    *websocket.Conn
+	send    chan wsMessage
+	isOwner bool
 }
 
 type wsMessage struct {
@@ -91,11 +100,12 @@ func New(cfg Config) (*Server, error) {
 	}
 
 	s := &Server{
-		addrs:   addrs,
-		session: cfg.Session,
-		auth:    cfg.Auth,
-		alias:   cfg.Alias,
-		clients: make(map[*client]struct{}),
+		addrs:      addrs,
+		session:    cfg.Session,
+		auth:       cfg.Auth,
+		alias:      cfg.Alias,
+		ownerToken: strings.TrimSpace(cfg.OwnerToken),
+		clients:    make(map[*client]struct{}),
 	}
 
 	return s, nil
@@ -104,6 +114,9 @@ func New(cfg Config) (*Server, error) {
 func (s *Server) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.Handle("/ws", s.authMiddleware(http.HandlerFunc(s.handleWS)))
+	if s.ownerToken != "" {
+		mux.Handle("/ws-owner", s.authMiddleware(http.HandlerFunc(s.handleWSOwner)))
+	}
 	mux.Handle("/", s.authMiddleware(s.staticHandler()))
 
 	srv := &http.Server{
@@ -132,6 +145,15 @@ func (s *Server) Start(ctx context.Context) error {
 		defer cancel()
 		_ = srv.Shutdown(shutdownCtx)
 	}
+	s.shutdownFunc = shutdown
+
+	go func() {
+		select {
+		case <-ctx.Done():
+		case <-s.session.Done():
+			s.requestShutdown()
+		}
+	}()
 
 	done := make(chan struct{})
 	go func() {
@@ -180,14 +202,43 @@ func listenAll(addrs []string) ([]net.Listener, error) {
 }
 
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
+	s.handleWSWithOwnerFlag(w, r, false)
+}
+
+func (s *Server) handleWSOwner(w http.ResponseWriter, r *http.Request) {
+	token := strings.TrimSpace(r.URL.Query().Get("token"))
+	if token == "" || token != s.ownerToken {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	s.ownerMu.Lock()
+	if s.ownerConnected {
+		s.ownerMu.Unlock()
+		http.Error(w, "Owner already connected", http.StatusConflict)
+		return
+	}
+	s.ownerConnected = true
+	s.ownerMu.Unlock()
+
+	s.handleWSWithOwnerFlag(w, r, true)
+}
+
+func (s *Server) handleWSWithOwnerFlag(w http.ResponseWriter, r *http.Request, isOwner bool) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		if isOwner {
+			s.ownerMu.Lock()
+			s.ownerConnected = false
+			s.ownerMu.Unlock()
+		}
 		return
 	}
 
 	c := &client{
-		conn: conn,
-		send: make(chan wsMessage, 128),
+		conn:    conn,
+		send:    make(chan wsMessage, 128),
+		isOwner: isOwner,
 	}
 
 	s.addClient(c)
@@ -218,6 +269,9 @@ func (c *client) readPump(s *Server) {
 		s.removeClient(c)
 		close(c.send)
 		c.conn.Close()
+		if c.isOwner {
+			s.requestShutdown()
+		}
 	}()
 
 	for {
@@ -236,6 +290,15 @@ func (c *client) readPump(s *Server) {
 			s.handleControl(control)
 		}
 	}
+}
+
+func (s *Server) requestShutdown() {
+	s.shutdownOnce.Do(func() {
+		s.session.Close()
+		if s.shutdownFunc != nil {
+			s.shutdownFunc()
+		}
+	})
 }
 
 func (s *Server) handleControl(control controlMessage) {

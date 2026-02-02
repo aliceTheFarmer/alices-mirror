@@ -12,26 +12,29 @@ import (
 )
 
 type Config struct {
-	WorkDir    string
-	BufferSize int
-	Shell      string
+	WorkDir         string
+	BufferSize      int
+	Shell           string
+	ExitOnShellExit bool
 }
 
 type Session struct {
-	mu         sync.Mutex
-	ptyFile    *os.File
-	cmd        *exec.Cmd
-	workDir    string
-	shell      string
-	bashRCPath string
-	buffer     *ringBuffer
-	outputCh   chan []byte
-	statusCh   chan string
-	lastCols   int
-	lastRows   int
-	writeMu    sync.Mutex
-	closeOnce  sync.Once
-	closed     bool
+	mu              sync.Mutex
+	ptyFile         *os.File
+	cmd             *exec.Cmd
+	workDir         string
+	shell           string
+	bashRCPath      string
+	exitOnShellExit bool
+	buffer          *ringBuffer
+	outputCh        chan []byte
+	statusCh        chan string
+	doneCh          chan struct{}
+	lastCols        int
+	lastRows        int
+	writeMu         sync.Mutex
+	closeOnce       sync.Once
+	closed          bool
 }
 
 func NewSession(cfg Config) (*Session, error) {
@@ -44,11 +47,13 @@ func NewSession(cfg Config) (*Session, error) {
 	}
 
 	s := &Session{
-		workDir:  cfg.WorkDir,
-		shell:    cfg.Shell,
-		buffer:   newRingBuffer(bufferSize),
-		outputCh: make(chan []byte, 128),
-		statusCh: make(chan string, 16),
+		workDir:         cfg.WorkDir,
+		shell:           cfg.Shell,
+		exitOnShellExit: cfg.ExitOnShellExit,
+		buffer:          newRingBuffer(bufferSize),
+		outputCh:        make(chan []byte, 128),
+		statusCh:        make(chan string, 16),
+		doneCh:          make(chan struct{}),
 	}
 
 	go s.runLoop()
@@ -78,6 +83,10 @@ func (s *Session) Output() <-chan []byte {
 
 func (s *Session) Status() <-chan string {
 	return s.statusCh
+}
+
+func (s *Session) Done() <-chan struct{} {
+	return s.doneCh
 }
 
 func (s *Session) Snapshot() []byte {
@@ -167,6 +176,14 @@ func (s *Session) runLoop() {
 			s.closeChannels()
 			return
 		}
+		if s.exitOnShellExit {
+			s.emitStatus("Shell exited.")
+			s.mu.Lock()
+			s.closed = true
+			s.mu.Unlock()
+			s.closeChannels()
+			return
+		}
 		s.emitStatus("Shell exited. Respawning now.")
 	}
 }
@@ -232,6 +249,7 @@ func (s *Session) closeChannels() {
 	s.closeOnce.Do(func() {
 		close(s.outputCh)
 		close(s.statusCh)
+		close(s.doneCh)
 	})
 }
 

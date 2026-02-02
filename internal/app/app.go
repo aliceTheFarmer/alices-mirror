@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"runtime"
 	"strings"
@@ -79,11 +80,13 @@ func Run(cfg Config) error {
 	}
 
 	auth := BuildAuthConfig(cfg)
+	ownerToken := strings.TrimSpace(os.Getenv("ALICES_MIRROR_OWNER_TOKEN"))
 
 	session, err := terminal.NewSession(terminal.Config{
-		WorkDir:    cfg.WorkDir,
-		BufferSize: 256 * 1024,
-		Shell:      cfg.Shell,
+		WorkDir:         cfg.WorkDir,
+		BufferSize:      256 * 1024,
+		Shell:           cfg.Shell,
+		ExitOnShellExit: ownerToken != "",
 	})
 	if err != nil {
 		return err
@@ -95,10 +98,11 @@ func Run(cfg Config) error {
 	}
 	alias := strings.TrimSpace(cfg.Alias)
 	srv, err := server.New(server.Config{
-		Addrs:   addrs,
-		Session: session,
-		Auth:    auth,
-		Alias:   alias,
+		Addrs:      addrs,
+		Session:    session,
+		Auth:       auth,
+		Alias:      alias,
+		OwnerToken: ownerToken,
 	})
 	if err != nil {
 		return err
@@ -136,7 +140,11 @@ func Run(cfg Config) error {
 		}
 	}
 
-	return srv.Start(ctx)
+	err = srv.Start(ctx)
+	if err == nil || errors.Is(err, http.ErrServerClosed) || errors.Is(err, context.Canceled) {
+		return nil
+	}
+	return err
 }
 
 func StartupLines(info StartupInfo) []string {

@@ -115,6 +115,12 @@ Run in the background:
 ./alices-mirror_linux --daemon
 ```
 
+Share the shell from your current terminal (server runs in the background):
+
+```bash
+./alices-mirror_linux --share
+```
+
 Advertise on the LAN for discovery:
 
 ```bash
@@ -134,6 +140,7 @@ There is no config file. Everything is controlled by flags:
 - `-h, --help` Show help and exit.
 - `-cw, --cwd=<path>` Start the shell in the specified working directory.
 - `-d, --daemon` Run the server in the background (prints PID and URLs).
+- `-sh, --share` Run the server in the background and attach this terminal to the shared shell.
 - `-o, --origin=<ip1,ip2,...>` Bind to comma-separated IPs/hosts (default `127.0.0.1,192.168.1.121`).
 - `-P, --password=<password>` Set Basic Auth password (requires `--user`).
 - `-p, --port=<port>` Listen on port (default `3002`).
