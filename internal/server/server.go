@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +32,7 @@ type Config struct {
 	Auth       AuthConfig
 	Alias      string
 	OwnerToken string
+	UserLevels []UserLevelRule
 }
 
 type Server struct {
@@ -39,6 +41,10 @@ type Server struct {
 	auth       AuthConfig
 	alias      string
 	ownerToken string
+	userLevels []UserLevelRule
+
+	warnedNoUserLevelMatchMu sync.Mutex
+	warnedNoUserLevelMatch   map[string]struct{}
 
 	clientsMu sync.Mutex
 	clients   map[*client]struct{}
@@ -51,9 +57,10 @@ type Server struct {
 }
 
 type client struct {
-	conn    *websocket.Conn
-	send    chan wsMessage
-	isOwner bool
+	conn      *websocket.Conn
+	send      chan wsMessage
+	isOwner   bool
+	userLevel UserLevel
 }
 
 type wsMessage struct {
@@ -86,6 +93,34 @@ func New(cfg Config) (*Server, error) {
 		return nil, errors.New("addrs are required")
 	}
 
+	userLevels := cfg.UserLevels
+	if len(userLevels) == 0 {
+		parsed, err := ParseUserLevelRules("*-0")
+		if err != nil {
+			return nil, err
+		}
+		userLevels = parsed
+	}
+
+	compiledUserLevels := make([]UserLevelRule, 0, len(userLevels))
+	for _, rule := range userLevels {
+		if strings.TrimSpace(rule.Pattern) == "" {
+			return nil, errors.New("user-level pattern cannot be empty")
+		}
+		if rule.Level != UserLevelInteract && rule.Level != UserLevelWatchOnly {
+			return nil, fmt.Errorf("invalid user-level %d for pattern %q (expected 0 or 1)", int(rule.Level), rule.Pattern)
+		}
+		compiled := rule
+		if compiled.matcher == nil {
+			matcher, err := compileUserLevelPattern(rule.Pattern)
+			if err != nil {
+				return nil, fmt.Errorf("invalid user-level pattern %q: %v", rule.Pattern, err)
+			}
+			compiled.matcher = matcher
+		}
+		compiledUserLevels = append(compiledUserLevels, compiled)
+	}
+
 	addrs := make([]string, 0, len(cfg.Addrs))
 	for _, addr := range cfg.Addrs {
 		trimmed := strings.TrimSpace(addr)
@@ -100,12 +135,14 @@ func New(cfg Config) (*Server, error) {
 	}
 
 	s := &Server{
-		addrs:      addrs,
-		session:    cfg.Session,
-		auth:       cfg.Auth,
-		alias:      cfg.Alias,
-		ownerToken: strings.TrimSpace(cfg.OwnerToken),
-		clients:    make(map[*client]struct{}),
+		addrs:                  addrs,
+		session:                cfg.Session,
+		auth:                   cfg.Auth,
+		alias:                  cfg.Alias,
+		ownerToken:             strings.TrimSpace(cfg.OwnerToken),
+		userLevels:             compiledUserLevels,
+		warnedNoUserLevelMatch: make(map[string]struct{}),
+		clients:                make(map[*client]struct{}),
 	}
 
 	return s, nil
@@ -235,13 +272,33 @@ func (s *Server) handleWSWithOwnerFlag(w http.ResponseWriter, r *http.Request, i
 		return
 	}
 
+	userLevel := UserLevelInteract
+	if !isOwner {
+		remoteIP := extractRemoteIP(r)
+		level, matched := MatchUserLevel(s.userLevels, remoteIP)
+		if matched {
+			userLevel = level
+		} else {
+			s.warnNoUserLevelMatch(remoteIP)
+		}
+	}
+
 	c := &client{
-		conn:    conn,
-		send:    make(chan wsMessage, 128),
-		isOwner: isOwner,
+		conn:      conn,
+		send:      make(chan wsMessage, 128),
+		isOwner:   isOwner,
+		userLevel: userLevel,
 	}
 
 	s.addClient(c)
+
+	readOnly := !c.isOwner && c.userLevel != UserLevelInteract
+	infoPayload, _ := json.Marshal(map[string]any{
+		"type":      "client-info",
+		"userLevel": int(c.userLevel),
+		"readOnly":  readOnly,
+	})
+	c.send <- wsMessage{messageType: websocket.TextMessage, data: infoPayload}
 
 	snapshot := s.session.Snapshot()
 	if len(snapshot) > 0 {
@@ -281,8 +338,13 @@ func (c *client) readPump(s *Server) {
 		}
 		switch messageType {
 		case websocket.BinaryMessage:
-			_ = s.session.WriteInput(payload)
+			if c.isOwner || c.userLevel == UserLevelInteract {
+				_ = s.session.WriteInput(payload)
+			}
 		case websocket.TextMessage:
+			if !c.isOwner && c.userLevel != UserLevelInteract {
+				continue
+			}
 			var control controlMessage
 			if err := json.Unmarshal(payload, &control); err != nil {
 				continue
@@ -422,6 +484,38 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func extractRemoteIP(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	remoteAddr := strings.TrimSpace(r.RemoteAddr)
+	if remoteAddr == "" {
+		return ""
+	}
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err == nil && host != "" {
+		return host
+	}
+	return remoteAddr
+}
+
+func (s *Server) warnNoUserLevelMatch(remoteIP string) {
+	trimmed := strings.TrimSpace(remoteIP)
+	if trimmed == "" {
+		trimmed = "unknown"
+	}
+
+	s.warnedNoUserLevelMatchMu.Lock()
+	if _, ok := s.warnedNoUserLevelMatch[trimmed]; ok {
+		s.warnedNoUserLevelMatchMu.Unlock()
+		return
+	}
+	s.warnedNoUserLevelMatch[trimmed] = struct{}{}
+	s.warnedNoUserLevelMatchMu.Unlock()
+
+	fmt.Fprintf(os.Stderr, "Warning: no --user-level rule matched %q; defaulting to level 0 (interact).\n", trimmed)
 }
 
 func LocalIPv4s() []string {

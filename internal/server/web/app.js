@@ -62,6 +62,8 @@
   let suppressKeybarClickUntil = 0;
   let lastTitleCwd = '';
   let lastTitleProc = '';
+  let clientReadOnly = false;
+  let readOnlyNoticeSent = false;
 
   function trimTrailingPunctuation(value) {
     let end = value.length;
@@ -273,7 +275,28 @@
   }
 
   function updateStatus(message) {
-    statusEl.textContent = message;
+    let text = typeof message === 'string' ? message : String(message || '');
+    if (clientReadOnly && text && !text.includes('watch-only')) {
+      text = `${text} (watch-only)`;
+    }
+    statusEl.textContent = text;
+  }
+
+  function warnReadOnly() {
+    if (readOnlyNoticeSent) {
+      return;
+    }
+    readOnlyNoticeSent = true;
+    updateStatus('Read-only session. Input is disabled.');
+  }
+
+  function setClientReadOnly(readOnly) {
+    clientReadOnly = Boolean(readOnly);
+    readOnlyNoticeSent = false;
+    if (term && typeof term.setOption === 'function') {
+      term.setOption('disableStdin', clientReadOnly);
+    }
+    root.classList.toggle('read-only', clientReadOnly);
   }
 
   function normalizeInput(data) {
@@ -309,6 +332,14 @@
       if (typeof event.data === 'string') {
         try {
           const payload = JSON.parse(event.data);
+          if (payload.type === 'client-info') {
+            const level = Number(payload.userLevel);
+            setClientReadOnly(Boolean(payload.readOnly) || level === 1);
+            if (clientReadOnly) {
+              updateStatus('Connected');
+            }
+            return;
+          }
           if (payload.type === 'status' && payload.message) {
             updateStatus(payload.message);
             return;
@@ -331,6 +362,10 @@
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       return;
     }
+    if (clientReadOnly) {
+      warnReadOnly();
+      return;
+    }
     if (data instanceof Uint8Array) {
       socket.send(data);
       return;
@@ -340,6 +375,9 @@
 
   function sendResize() {
     if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    if (clientReadOnly) {
       return;
     }
     const payload = {
@@ -353,6 +391,10 @@
   function sendReset() {
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       updateStatus('Not connected.');
+      return;
+    }
+    if (clientReadOnly) {
+      warnReadOnly();
       return;
     }
     socket.send(JSON.stringify({ type: 'reset' }));
@@ -561,6 +603,10 @@
   }
 
   function handleInput(data) {
+    if (clientReadOnly) {
+      warnReadOnly();
+      return;
+    }
     data = normalizeInput(data);
 
     if (data === '\x04') {
@@ -600,6 +646,10 @@
   }
 
   document.addEventListener('paste', (event) => {
+    if (clientReadOnly) {
+      warnReadOnly();
+      return;
+    }
     if (!isPasteTarget(event.target)) {
       return;
     }
@@ -613,6 +663,10 @@
   }, true);
 
   function requestPaste() {
+    if (clientReadOnly) {
+      warnReadOnly();
+      return;
+    }
     if (navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
       navigator.clipboard.readText().then((text) => {
         if (text) {
@@ -713,6 +767,9 @@
     if (!terminalFocused) {
       return;
     }
+    if (clientReadOnly) {
+      return;
+    }
     if (event.ctrlKey && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 'c') {
       event.preventDefault();
       event.stopPropagation();
@@ -722,6 +779,10 @@
 
   function handleKeybarAction(key, selectionSnapshot) {
     if (!key) {
+      return;
+    }
+    if (clientReadOnly && key !== 'copy' && key !== 'clear') {
+      warnReadOnly();
       return;
     }
     switch (key) {

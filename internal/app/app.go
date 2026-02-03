@@ -16,15 +16,16 @@ import (
 )
 
 type Config struct {
-	Alias    string
-	Port     int
-	Origins  []string
-	User     string
-	Password string
-	Yolo     bool
-	WorkDir  string
-	Shell    string
-	Visible  bool
+	Alias     string
+	Port      int
+	Origins   []string
+	UserLevel string
+	User      string
+	Password  string
+	Yolo      bool
+	WorkDir   string
+	Shell     string
+	Visible   bool
 }
 
 type StartupInfo struct {
@@ -50,6 +51,14 @@ func Validate(cfg Config) error {
 		if strings.TrimSpace(origin) == "" {
 			return errors.New("origin list is required")
 		}
+	}
+
+	userLevel := strings.TrimSpace(cfg.UserLevel)
+	if userLevel == "" {
+		userLevel = "*-0"
+	}
+	if _, err := server.ParseUserLevelRules(userLevel); err != nil {
+		return fmt.Errorf("invalid value %q for --user-level: %v", cfg.UserLevel, err)
 	}
 	info, err := os.Stat(cfg.WorkDir)
 	if err != nil {
@@ -81,6 +90,14 @@ func Run(cfg Config) error {
 
 	auth := BuildAuthConfig(cfg)
 	ownerToken := strings.TrimSpace(os.Getenv("ALICES_MIRROR_OWNER_TOKEN"))
+	userLevel := strings.TrimSpace(cfg.UserLevel)
+	if userLevel == "" {
+		userLevel = "*-0"
+	}
+	userLevels, err := server.ParseUserLevelRules(userLevel)
+	if err != nil {
+		return fmt.Errorf("invalid value %q for --user-level: %v", cfg.UserLevel, err)
+	}
 
 	session, err := terminal.NewSession(terminal.Config{
 		WorkDir:         cfg.WorkDir,
@@ -103,6 +120,7 @@ func Run(cfg Config) error {
 		Auth:       auth,
 		Alias:      alias,
 		OwnerToken: ownerToken,
+		UserLevels: userLevels,
 	})
 	if err != nil {
 		return err

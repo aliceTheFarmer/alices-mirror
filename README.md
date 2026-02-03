@@ -53,6 +53,7 @@ This is the simplest way to take your Codex, Claude Code, and OpenCode workflows
 3. Run it on the host machine:
    - Linux: `./alices-mirror_linux`
    - Windows: `alices-mirror_windows.exe`
+   - Android (Termux): `./alices-mirror_mobile`
 4. Open `http://<host-ip>:3002` in a browser.
 
 You can close the browser, reopen it later, and even switch devices (desktop, phone, tablet). The terminal session stays the same. It is common to start an agent on your desktop, check progress from your phone while walking the dog, and then review the final state on a tablet before watching a movie.
@@ -70,7 +71,7 @@ go build -o alices-mirror ./cli/alices-mirror
 ```
 
 ### Downloads
-Prebuilt Linux and Windows binaries are published on the GitHub Releases page.
+Prebuilt Linux, Windows, and Android (Termux) binaries are published on the GitHub Releases page.
 
 ## Usage
 Basic run:
@@ -102,6 +103,14 @@ Enable Basic Auth:
 ```bash
 ./alices-mirror_linux --user=alice --password=secret
 ```
+
+Assign read-only "watch" access by client IP:
+
+```bash
+./alices-mirror_linux --user-level=192.168.1.205-0,192.168.1.*-1
+```
+
+Rules are evaluated left-to-right (first match wins). Unmatched IPs default to level `0` (write) with a warning.
 
 Disable auth entirely (not recommended on untrusted networks):
 
@@ -142,6 +151,7 @@ There is no config file. Everything is controlled by flags:
 - `-d, --daemon` Run the server in the background (prints PID and URLs).
 - `-s, --share` Run the server in the background and attach this terminal to the shared shell.
 - `-o, --origin=<ip1,ip2,...>` Bind to comma-separated IPs/hosts (default `127.0.0.1,192.168.1.121`).
+- `-ul, --user-level=<rules>` Per-IP authorization levels. Format `<pattern>-<level>[,...]` where level `0=interact`, `1=watch-only`. Patterns support `*` wildcard. First match wins. Default `*-0`. Unmatched IPs default to `0` with a warning.
 - `-P, --password=<password>` Set Basic Auth password (requires `--user`).
 - `-p, --port=<port>` Listen on port (default `3002`).
 - `-S, --shell=<shell>` Windows only: `powershell` or `cmd` (default `powershell`).
@@ -168,7 +178,7 @@ If you want Codex, Claude Code, OpenCode, or any other terminal workflow to be a
 ## Platform Support
 - Linux (shared Bash PTY)
 - Windows (PowerShell or cmd via `--shell`)
-- Android (server build for mobile) — APK coming soon on Google Play.
+- Android (arm64) build intended for Termux (`alices-mirror_mobile`).
 
 ## License
 MIT. See `LICENSE`.

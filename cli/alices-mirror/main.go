@@ -28,6 +28,7 @@ var baseSpecs = []flagSpec{
 	{Long: "share", Short: "s", ExpectsValue: false, IsBool: true},
 	{Long: "share", Short: "sh", ExpectsValue: false, IsBool: true},
 	{Long: "origin", Short: "o", ExpectsValue: true, IsBool: false},
+	{Long: "user-level", Short: "ul", ExpectsValue: true, IsBool: false},
 	{Long: "password", Short: "P", ExpectsValue: true, IsBool: false},
 	{Long: "port", Short: "p", ExpectsValue: true, IsBool: false},
 	{Long: "visible", Short: "vi", ExpectsValue: false, IsBool: true},
@@ -36,6 +37,7 @@ var baseSpecs = []flagSpec{
 }
 
 const defaultOrigins = "127.0.0.1,192.168.1.121"
+const defaultUserLevel = "*-0"
 
 func allSpecs() []flagSpec {
 	platform := platformSpecs()
@@ -60,18 +62,19 @@ func main() {
 	fs.SetOutput(io.Discard)
 
 	var (
-		alias    string
-		help     bool
-		cwd      string
-		daemon   bool
-		share    bool
-		origin   string
-		port     int
-		visible  bool
-		user     string
-		password string
-		yolo     bool
-		shell    = defaultPlatformShell()
+		alias     string
+		help      bool
+		cwd       string
+		daemon    bool
+		share     bool
+		origin    string
+		userLevel string
+		port      int
+		visible   bool
+		user      string
+		password  string
+		yolo      bool
+		shell     = defaultPlatformShell()
 	)
 
 	fs.StringVar(&alias, "alias", "", "")
@@ -80,6 +83,7 @@ func main() {
 	fs.BoolVar(&daemon, "daemon", false, "")
 	fs.BoolVar(&share, "share", false, "")
 	fs.StringVar(&origin, "origin", defaultOrigins, "")
+	fs.StringVar(&userLevel, "user-level", defaultUserLevel, "")
 	fs.IntVar(&port, "port", 3002, "")
 	fs.BoolVar(&visible, "visible", false, "")
 	fs.StringVar(&user, "user", "", "")
@@ -108,6 +112,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	userLevelProvided := flagPresent(canonical, "user-level")
+	if userLevelProvided && strings.TrimSpace(userLevel) == "" {
+		printError(fmt.Errorf("invalid value %q for --user-level", userLevel))
+		os.Exit(1)
+	}
+
 	shell, err = normalizePlatformShell(shell)
 	if err != nil {
 		printError(err)
@@ -127,15 +137,16 @@ func main() {
 	}
 
 	cfg := app.Config{
-		Alias:    alias,
-		Port:     port,
-		Origins:  origins,
-		User:     user,
-		Password: password,
-		Yolo:     yolo,
-		WorkDir:  workDir,
-		Shell:    shell,
-		Visible:  visible,
+		Alias:     alias,
+		Port:      port,
+		Origins:   origins,
+		UserLevel: userLevel,
+		User:      user,
+		Password:  password,
+		Yolo:      yolo,
+		WorkDir:   workDir,
+		Shell:     shell,
+		Visible:   visible,
 	}
 
 	if share {
@@ -251,6 +262,9 @@ func printHelp() {
 	fmt.Println("  -d, --daemon           Run the server in the background.")
 	fmt.Println("  -s, --share            Share this terminal session (starts server in background).")
 	fmt.Printf("  -o, --origin=<list>    Bind to comma-separated IPs/hosts (default %s).\n", defaultOrigins)
+	fmt.Printf("  -ul, --user-level=<rules>  Per-IP authorization levels (default %s).\n", defaultUserLevel)
+	fmt.Println("                          Format: <pattern>-<level>[,...] where level 0=interact, 1=watch-only.")
+	fmt.Println("                          Patterns support '*' wildcard. First match wins. Unmatched IPs default to level 0 with a warning.")
 	fmt.Println("  -P, --password=<password>  Set Basic Auth password (requires --user).")
 	fmt.Println("  -p, --port=<port>      Listen on port <port> (default 3002).")
 	fmt.Println("  -vi, --visible         Advertise the server on the LAN for discovery.")

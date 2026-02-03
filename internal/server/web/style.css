@@ -124,6 +124,19 @@ body {
   background: #1f2734;
 }
 
+:root.read-only .keybar button {
+  opacity: 0.55;
+}
+
+:root.read-only .keybar button:not([data-key="copy"]):not([data-key="clear"]) {
+  pointer-events: none;
+}
+
+:root.read-only .keybar button[data-key="copy"],
+:root.read-only .keybar button[data-key="clear"] {
+  opacity: 1;
+}
+
 .keybar button.wide {
   grid-column: span 1;
 }
