@@ -61,7 +61,7 @@ You can close the browser, reopen it later, and even switch devices (desktop, ph
 If you want other devices on your LAN to connect, set the bind list to your host IP or to all interfaces:
 
 ```bash
-./alices-mirror_linux --origin=0.0.0.0
+./alices-mirror_linux --bind=0.0.0.0
 ```
 
 ## Installation
@@ -89,13 +89,19 @@ Start the shell in a specific directory:
 Bind to specific LAN IPs:
 
 ```bash
-./alices-mirror_linux --origin=127.0.0.1,192.168.1.50
+./alices-mirror_linux --bind=127.0.0.1,192.168.1.50
+```
+
+Restrict which clients can connect:
+
+```bash
+./alices-mirror_linux --bind=0.0.0.0 --allow-ip=192.168.1.*
 ```
 
 Set a friendly alias for discovery and the UI title:
 
 ```bash
-./alices-mirror_linux --alias="Studio Mac" --visible --origin=0.0.0.0
+./alices-mirror_linux --alias="Studio Mac" --visible --bind=0.0.0.0
 ```
 
 Enable Basic Auth:

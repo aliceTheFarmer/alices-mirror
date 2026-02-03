@@ -10,6 +10,10 @@
   const confirmBtn = document.getElementById('confirm-exit');
   const cancelBtn = document.getElementById('cancel-exit');
   const pasteProxy = document.getElementById('paste-proxy');
+  const uploadToast = document.getElementById('upload-toast');
+  const uploadToastTitle = document.getElementById('upload-toast-title');
+  const uploadToastMeta = document.getElementById('upload-toast-meta');
+  const uploadToastBar = document.getElementById('upload-toast-bar');
   const root = document.documentElement;
   const userAgent = navigator && navigator.userAgent ? navigator.userAgent : '';
   const isMobileUA = /Android|iPhone|iPad|iPod/i.test(userAgent);
@@ -64,6 +68,9 @@
   let lastTitleProc = '';
   let clientReadOnly = false;
   let readOnlyNoticeSent = false;
+  let uploadQueue = [];
+  let uploadInProgress = false;
+  let uploadToastTimer = 0;
 
   function trimTrailingPunctuation(value) {
     let end = value.length;
@@ -297,6 +304,215 @@
       term.setOption('disableStdin', clientReadOnly);
     }
     root.classList.toggle('read-only', clientReadOnly);
+  }
+
+  function showUploadToast(title, meta) {
+    if (!uploadToast) {
+      return;
+    }
+    if (uploadToastTimer) {
+      clearTimeout(uploadToastTimer);
+      uploadToastTimer = 0;
+    }
+    uploadToast.classList.remove('hidden');
+    if (uploadToastTitle) {
+      uploadToastTitle.textContent = title || 'Uploading...';
+    }
+    if (uploadToastMeta) {
+      uploadToastMeta.textContent = meta || '';
+    }
+  }
+
+  function updateUploadToastProgress(progress) {
+    if (!uploadToastBar) {
+      return;
+    }
+    let value = Number(progress);
+    if (!Number.isFinite(value)) {
+      value = 0;
+    }
+    value = Math.max(0, Math.min(100, value));
+    uploadToastBar.style.width = `${Math.round(value)}%`;
+  }
+
+  function hideUploadToast(delayMs) {
+    if (!uploadToast) {
+      return;
+    }
+    if (uploadToastTimer) {
+      clearTimeout(uploadToastTimer);
+      uploadToastTimer = 0;
+    }
+    const delay = Math.max(0, Number(delayMs) || 0);
+    if (delay === 0) {
+      uploadToast.classList.add('hidden');
+      return;
+    }
+    uploadToastTimer = setTimeout(() => {
+      uploadToastTimer = 0;
+      uploadToast.classList.add('hidden');
+    }, delay);
+  }
+
+  function formatFileCount(count) {
+    const value = Number(count) || 0;
+    if (value === 1) {
+      return '1 file';
+    }
+    return `${value} files`;
+  }
+
+  function queueFileUpload(fileList) {
+    if (!fileList || typeof fileList.length !== 'number' || fileList.length === 0) {
+      return;
+    }
+    if (clientReadOnly) {
+      warnReadOnly();
+      return;
+    }
+    const files = Array.from(fileList).filter((file) => file && typeof file.name === 'string');
+    if (!files.length) {
+      return;
+    }
+    uploadQueue.push(files);
+    startNextUpload();
+  }
+
+  function startNextUpload() {
+    if (uploadInProgress) {
+      return;
+    }
+    if (!uploadQueue.length) {
+      return;
+    }
+    if (clientReadOnly) {
+      uploadQueue = [];
+      warnReadOnly();
+      return;
+    }
+
+    const files = uploadQueue.shift();
+    if (!files || !files.length) {
+      startNextUpload();
+      return;
+    }
+
+    uploadInProgress = true;
+    const countLabel = formatFileCount(files.length);
+    const uploadMetaLabel = files.length === 1 ? files[0].name : '';
+    showUploadToast(`Uploading ${countLabel}...`, uploadMetaLabel);
+    updateUploadToastProgress(0);
+
+    const form = new FormData();
+    files.forEach((file) => {
+      form.append('files', file, file.name);
+    });
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/upload');
+    xhr.responseType = 'json';
+
+    xhr.upload.onprogress = (event) => {
+      if (!event || !event.lengthComputable || !event.total) {
+        return;
+      }
+      const progress = (event.loaded / event.total) * 100;
+      updateUploadToastProgress(progress);
+      if (uploadToastMeta) {
+        const percent = `${Math.round(progress)}%`;
+        uploadToastMeta.textContent = uploadMetaLabel ? `${percent} · ${uploadMetaLabel}` : percent;
+      }
+    };
+
+    xhr.onload = () => {
+      uploadInProgress = false;
+      const ok = xhr.status >= 200 && xhr.status < 300;
+      const response = xhr.response;
+      if (!ok) {
+        const message = xhr.responseText ? xhr.responseText.trim() : '';
+        showUploadToast('Upload failed.', message || `HTTP ${xhr.status}`);
+        updateUploadToastProgress(0);
+        hideUploadToast(5000);
+        startNextUpload();
+        return;
+      }
+
+      if (response && Array.isArray(response.files) && response.files.length) {
+        const names = response.files.map((item) => item && item.name).filter(Boolean);
+        const meta = names.length ? `Saved: ${names.join(', ')}` : '';
+        showUploadToast('Upload complete.', meta);
+      } else {
+        showUploadToast('Upload complete.', '');
+      }
+      updateUploadToastProgress(100);
+      hideUploadToast(3500);
+      startNextUpload();
+    };
+
+    xhr.onerror = () => {
+      uploadInProgress = false;
+      showUploadToast('Upload failed.', 'Network error.');
+      updateUploadToastProgress(0);
+      hideUploadToast(5000);
+      startNextUpload();
+    };
+
+    xhr.onabort = () => {
+      uploadInProgress = false;
+      showUploadToast('Upload cancelled.', '');
+      updateUploadToastProgress(0);
+      hideUploadToast(2500);
+      startNextUpload();
+    };
+
+    try {
+      xhr.send(form);
+    } catch (err) {
+      uploadInProgress = false;
+      showUploadToast('Upload failed.', err && err.message ? err.message : 'Unknown error.');
+      updateUploadToastProgress(0);
+      hideUploadToast(5000);
+      startNextUpload();
+    }
+  }
+
+  function registerFileDrop() {
+    if (!terminalEl || typeof terminalEl.addEventListener !== 'function') {
+      return;
+    }
+
+    function isFileDrag(event) {
+      const types = event && event.dataTransfer ? event.dataTransfer.types : null;
+      if (!types || typeof types.includes !== 'function') {
+        return false;
+      }
+      return types.includes('Files');
+    }
+
+    terminalEl.addEventListener('dragover', (event) => {
+      if (!isFileDrag(event)) {
+        return;
+      }
+      event.preventDefault();
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = 'copy';
+      }
+      if (clientReadOnly) {
+        warnReadOnly();
+      }
+    });
+
+    terminalEl.addEventListener('drop', (event) => {
+      if (!isFileDrag(event)) {
+        return;
+      }
+      event.preventDefault();
+      const files = event.dataTransfer ? event.dataTransfer.files : null;
+      if (!files || !files.length) {
+        return;
+      }
+      queueFileUpload(files);
+    });
   }
 
   function normalizeInput(data) {
@@ -923,5 +1139,6 @@
 
   window.addEventListener('pageshow', () => scheduleResize(180));
 
+  registerFileDrop();
   connect();
 })();

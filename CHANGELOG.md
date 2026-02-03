@@ -3,7 +3,7 @@
 ## v2.0.2 - 2026-02-03
 - Added `--user-level` to set per-IP access levels (0=interact, 1=watch-only).
 - Watch-only clients now get a read-only UI and cannot send input/reset/resize.
-- Security: combine `--origin` (bind list) with `--user-level` rules to limit who can interact.
+- Security: use `--allow-ip` to restrict who can connect, and `--user-level` to set watch-only clients.
 - Added official mobile (Android arm64 / Termux) release binary: `alices-mirror_mobile`.
 - Windows: switched PTY backend to ConPTY.
 

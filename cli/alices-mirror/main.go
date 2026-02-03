@@ -27,6 +27,9 @@ var baseSpecs = []flagSpec{
 	{Long: "daemon", Short: "d", ExpectsValue: false, IsBool: true},
 	{Long: "share", Short: "s", ExpectsValue: false, IsBool: true},
 	{Long: "share", Short: "sh", ExpectsValue: false, IsBool: true},
+	{Long: "bind", Short: "b", ExpectsValue: true, IsBool: false},
+	{Long: "allow-ip", Short: "al", ExpectsValue: true, IsBool: false},
+	{Long: "allow-ips", Short: "", ExpectsValue: true, IsBool: false},
 	{Long: "origin", Short: "o", ExpectsValue: true, IsBool: false},
 	{Long: "user-level", Short: "ul", ExpectsValue: true, IsBool: false},
 	{Long: "password", Short: "P", ExpectsValue: true, IsBool: false},
@@ -36,7 +39,8 @@ var baseSpecs = []flagSpec{
 	{Long: "yolo", Short: "y", ExpectsValue: false, IsBool: true},
 }
 
-const defaultOrigins = "127.0.0.1,192.168.1.121"
+const defaultBindList = "127.0.0.1,192.168.1.*"
+const defaultAllowIPList = "127.0.0.1,192.168.1.*"
 const defaultUserLevel = "*-0"
 
 func allSpecs() []flagSpec {
@@ -67,7 +71,9 @@ func main() {
 		cwd       string
 		daemon    bool
 		share     bool
+		bind      string
 		origin    string
+		allowIPs  string
 		userLevel string
 		port      int
 		visible   bool
@@ -82,7 +88,10 @@ func main() {
 	fs.StringVar(&cwd, "cwd", "", "")
 	fs.BoolVar(&daemon, "daemon", false, "")
 	fs.BoolVar(&share, "share", false, "")
-	fs.StringVar(&origin, "origin", defaultOrigins, "")
+	fs.StringVar(&bind, "bind", defaultBindList, "")
+	fs.StringVar(&origin, "origin", "", "")
+	fs.StringVar(&allowIPs, "allow-ip", defaultAllowIPList, "")
+	fs.StringVar(&allowIPs, "allow-ips", defaultAllowIPList, "")
 	fs.StringVar(&userLevel, "user-level", defaultUserLevel, "")
 	fs.IntVar(&port, "port", 3002, "")
 	fs.BoolVar(&visible, "visible", false, "")
@@ -106,7 +115,32 @@ func main() {
 		os.Exit(1)
 	}
 
-	origins, err := parseOriginList(origin)
+	bindProvided := flagPresent(canonical, "bind")
+	originProvided := flagPresent(canonical, "origin")
+	if bindProvided && originProvided {
+		printError(errors.New("cannot use --origin with --bind (use --bind only)"))
+		os.Exit(1)
+	}
+
+	bindFlagName := "--bind"
+	bindList := bind
+	if originProvided {
+		bindFlagName = "--origin"
+		bindList = origin
+	}
+
+	binds, err := parseHostList(bindList, bindFlagName)
+	if err != nil {
+		printError(err)
+		os.Exit(1)
+	}
+
+	allowProvided := flagPresent(canonical, "allow-ip") || flagPresent(canonical, "allow-ips")
+	if allowProvided && strings.TrimSpace(allowIPs) == "" {
+		printError(fmt.Errorf("invalid value %q for --allow-ip", allowIPs))
+		os.Exit(1)
+	}
+	allowList, err := parseHostList(allowIPs, "--allow-ip")
 	if err != nil {
 		printError(err)
 		os.Exit(1)
@@ -139,7 +173,8 @@ func main() {
 	cfg := app.Config{
 		Alias:     alias,
 		Port:      port,
-		Origins:   origins,
+		Origins:   binds,
+		AllowIPs:  allowList,
 		UserLevel: userLevel,
 		User:      user,
 		Password:  password,
@@ -261,7 +296,11 @@ func printHelp() {
 	fmt.Println("  -cw, --cwd=<path>      Start the shell in the specified working directory.")
 	fmt.Println("  -d, --daemon           Run the server in the background.")
 	fmt.Println("  -s, --share            Share this terminal session (starts server in background).")
-	fmt.Printf("  -o, --origin=<list>    Bind to comma-separated IPs/hosts (default %s).\n", defaultOrigins)
+	fmt.Printf("  -b, --bind=<list>      Bind to comma-separated IPs/hosts (default %s).\n", defaultBindList)
+	fmt.Printf("  -al, --allow-ip=<list> Allow only matching client IPs (default %s).\n", defaultAllowIPList)
+	fmt.Println("                          Alias: --allow-ips.")
+	fmt.Println("                          Patterns support '*' wildcard.")
+	fmt.Println("  -o, --origin=<list>    Deprecated alias for --bind.")
 	fmt.Printf("  -ul, --user-level=<rules>  Per-IP authorization levels (default %s).\n", defaultUserLevel)
 	fmt.Println("                          Format: <pattern>-<level>[,...] where level 0=interact, 1=watch-only.")
 	fmt.Println("                          Patterns support '*' wildcard. First match wins. Unmatched IPs default to level 0 with a warning.")
@@ -322,36 +361,36 @@ func flagPresent(args []string, long string) bool {
 	return false
 }
 
-func parseOriginList(raw string) ([]string, error) {
+func parseHostList(raw string, flagName string) ([]string, error) {
 	items := strings.Split(raw, ",")
 	if len(items) == 0 {
-		return nil, fmt.Errorf("invalid value %q for --origin", raw)
+		return nil, fmt.Errorf("invalid value %q for %s", raw, flagName)
 	}
 
 	seen := make(map[string]struct{}, len(items))
-	origins := make([]string, 0, len(items))
+	values := make([]string, 0, len(items))
 	for _, item := range items {
 		cleaned := strings.TrimSpace(item)
 		if cleaned == "" {
-			return nil, fmt.Errorf("invalid value %q for --origin", raw)
+			return nil, fmt.Errorf("invalid value %q for %s", raw, flagName)
 		}
 		if strings.Contains(cleaned, ":") {
 			if net.ParseIP(cleaned) == nil {
-				return nil, fmt.Errorf("invalid origin %q: hostnames must not include a port", cleaned)
+				return nil, fmt.Errorf("invalid value %q for %s: hostnames must not include a port", cleaned, flagName)
 			}
 		}
 		if _, ok := seen[cleaned]; ok {
 			continue
 		}
 		seen[cleaned] = struct{}{}
-		origins = append(origins, cleaned)
+		values = append(values, cleaned)
 	}
 
-	if len(origins) == 0 {
-		return nil, fmt.Errorf("invalid value %q for --origin", raw)
+	if len(values) == 0 {
+		return nil, fmt.Errorf("invalid value %q for %s", raw, flagName)
 	}
 
-	return origins, nil
+	return values, nil
 }
 
 func printError(err error) {

@@ -29,6 +29,8 @@ type Session struct {
 	doneCh          chan struct{}
 	lastCols        int
 	lastRows        int
+	lastTitleCwd    string
+	lastTitleProc   string
 	writeMu         sync.Mutex
 	closeOnce       sync.Once
 	closed          bool
@@ -195,12 +197,16 @@ func (s *Session) runLoop() {
 }
 
 func (s *Session) readLoop(reader io.Reader) {
+	parser := newOSCTitleParser()
 	buf := make([]byte, 4096)
 	for {
 		n, err := reader.Read(buf)
 		if n > 0 {
 			chunk := make([]byte, n)
 			copy(chunk, buf[:n])
+			for _, title := range parser.Feed(chunk) {
+				s.captureTitle(title)
+			}
 			s.buffer.Append(chunk)
 			s.emitOutput(chunk)
 		}
@@ -208,6 +214,24 @@ func (s *Session) readLoop(reader io.Reader) {
 			return
 		}
 	}
+}
+
+func (s *Session) captureTitle(title string) {
+	cwd, proc, ok := parseAlicesMirrorTitle(title)
+	if !ok {
+		return
+	}
+	if cwd == "" && proc == "" {
+		return
+	}
+	s.mu.Lock()
+	if cwd != "" {
+		s.lastTitleCwd = cwd
+	}
+	if proc != "" {
+		s.lastTitleProc = proc
+	}
+	s.mu.Unlock()
 }
 
 func (s *Session) emitOutput(data []byte) {

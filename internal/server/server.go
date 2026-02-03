@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -28,6 +29,7 @@ type AuthConfig struct {
 
 type Config struct {
 	Addrs      []string
+	AllowIPs   []string
 	Session    *terminal.Session
 	Auth       AuthConfig
 	Alias      string
@@ -37,6 +39,7 @@ type Config struct {
 
 type Server struct {
 	addrs      []string
+	allowIPs   []*regexp.Regexp
 	session    *terminal.Session
 	auth       AuthConfig
 	alias      string
@@ -92,6 +95,9 @@ func New(cfg Config) (*Server, error) {
 	if len(cfg.Addrs) == 0 {
 		return nil, errors.New("addrs are required")
 	}
+	if len(cfg.AllowIPs) == 0 {
+		return nil, errors.New("allow-ip patterns are required")
+	}
 
 	userLevels := cfg.UserLevels
 	if len(userLevels) == 0 {
@@ -134,8 +140,14 @@ func New(cfg Config) (*Server, error) {
 		return nil, errors.New("addrs are required")
 	}
 
+	allowMatchers, err := compileAllowIPMatchers(cfg.AllowIPs)
+	if err != nil {
+		return nil, err
+	}
+
 	s := &Server{
 		addrs:                  addrs,
+		allowIPs:               allowMatchers,
 		session:                cfg.Session,
 		auth:                   cfg.Auth,
 		alias:                  cfg.Alias,
@@ -154,6 +166,7 @@ func (s *Server) Start(ctx context.Context) error {
 	if s.ownerToken != "" {
 		mux.Handle("/ws-owner", s.authMiddleware(http.HandlerFunc(s.handleWSOwner)))
 	}
+	mux.Handle("/upload", s.authMiddleware(http.HandlerFunc(s.handleUpload)))
 	mux.Handle("/", s.authMiddleware(s.staticHandler()))
 
 	srv := &http.Server{
@@ -472,10 +485,20 @@ func (s *Server) staticHandler() http.Handler {
 
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	if !s.auth.Enabled {
-		return next
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !s.isAllowedIP(r) {
+				http.Error(w, "Forbidden", http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !s.isAllowedIP(r) {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
 		user, pass, ok := r.BasicAuth()
 		if !ok || user != s.auth.User || pass != s.auth.Password {
 			w.Header().Set("WWW-Authenticate", fmt.Sprintf("Basic realm=\"%s\"", "alices mirror"))
@@ -484,6 +507,44 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func compileAllowIPMatchers(patterns []string) ([]*regexp.Regexp, error) {
+	seen := make(map[string]struct{}, len(patterns))
+	out := make([]*regexp.Regexp, 0, len(patterns))
+	for _, pattern := range patterns {
+		cleaned := strings.TrimSpace(pattern)
+		if cleaned == "" {
+			return nil, errors.New("allow-ip pattern cannot be empty")
+		}
+		if _, ok := seen[cleaned]; ok {
+			continue
+		}
+		seen[cleaned] = struct{}{}
+		matcher, err := compileUserLevelPattern(cleaned)
+		if err != nil {
+			return nil, fmt.Errorf("invalid allow-ip pattern %q: %v", cleaned, err)
+		}
+		out = append(out, matcher)
+	}
+	if len(out) == 0 {
+		return nil, errors.New("allow-ip patterns are required")
+	}
+	return out, nil
+}
+
+func (s *Server) isAllowedIP(r *http.Request) bool {
+	remoteIP := extractRemoteIP(r)
+	trimmed := strings.TrimSpace(remoteIP)
+	if trimmed == "" {
+		return false
+	}
+	for _, matcher := range s.allowIPs {
+		if matcher != nil && matcher.MatchString(trimmed) {
+			return true
+		}
+	}
+	return false
 }
 
 func extractRemoteIP(r *http.Request) string {

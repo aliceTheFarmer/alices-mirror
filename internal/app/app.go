@@ -19,6 +19,7 @@ type Config struct {
 	Alias     string
 	Port      int
 	Origins   []string
+	AllowIPs  []string
 	UserLevel string
 	User      string
 	Password  string
@@ -45,12 +46,26 @@ func Validate(cfg Config) error {
 		return errors.New("work directory is required")
 	}
 	if len(cfg.Origins) == 0 {
-		return errors.New("origin list is required")
+		return errors.New("bind list is required")
 	}
 	for _, origin := range cfg.Origins {
 		if strings.TrimSpace(origin) == "" {
-			return errors.New("origin list is required")
+			return errors.New("bind list is required")
 		}
+	}
+
+	if len(cfg.AllowIPs) == 0 {
+		return errors.New("allow-ip list is required")
+	}
+	for _, pattern := range cfg.AllowIPs {
+		if strings.TrimSpace(pattern) == "" {
+			return errors.New("allow-ip list is required")
+		}
+	}
+
+	resolvedBinds := server.ExpandBindPatterns(cfg.Origins)
+	if len(resolvedBinds) == 0 {
+		return errors.New("bind patterns did not match any local IPv4 addresses")
 	}
 
 	userLevel := strings.TrimSpace(cfg.UserLevel)
@@ -99,6 +114,11 @@ func Run(cfg Config) error {
 		return fmt.Errorf("invalid value %q for --user-level: %v", cfg.UserLevel, err)
 	}
 
+	resolvedBinds := server.ExpandBindPatterns(cfg.Origins)
+	if len(resolvedBinds) == 0 {
+		return errors.New("bind patterns did not match any local IPv4 addresses")
+	}
+
 	session, err := terminal.NewSession(terminal.Config{
 		WorkDir:         cfg.WorkDir,
 		BufferSize:      256 * 1024,
@@ -109,13 +129,14 @@ func Run(cfg Config) error {
 		return err
 	}
 
-	addrs := make([]string, 0, len(cfg.Origins))
-	for _, origin := range cfg.Origins {
+	addrs := make([]string, 0, len(resolvedBinds))
+	for _, origin := range resolvedBinds {
 		addrs = append(addrs, net.JoinHostPort(origin, fmt.Sprintf("%d", cfg.Port)))
 	}
 	alias := strings.TrimSpace(cfg.Alias)
 	srv, err := server.New(server.Config{
 		Addrs:      addrs,
+		AllowIPs:   cfg.AllowIPs,
 		Session:    session,
 		Auth:       auth,
 		Alias:      alias,
@@ -129,7 +150,7 @@ func Run(cfg Config) error {
 	lines := StartupLines(StartupInfo{
 		WorkDir: cfg.WorkDir,
 		Port:    cfg.Port,
-		Origins: cfg.Origins,
+		Origins: resolvedBinds,
 		Auth:    auth,
 	})
 	for _, line := range lines {
@@ -143,7 +164,7 @@ func Run(cfg Config) error {
 		hostname, _ := os.Hostname()
 		_, err := discovery.Start(ctx, discovery.Info{
 			Alias:        alias,
-			Hosts:        filterLANHosts(buildDisplayHosts(cfg.Origins)),
+			Hosts:        filterLANHosts(buildDisplayHosts(resolvedBinds)),
 			Port:         cfg.Port,
 			AuthRequired: auth.Enabled,
 			Yolo:         cfg.Yolo,
@@ -174,7 +195,11 @@ func StartupLines(info StartupInfo) []string {
 		lines = append(lines, fmt.Sprintf("PID: %d", info.PID))
 	}
 
-	hosts := buildDisplayHosts(info.Origins)
+	origins := server.ExpandBindPatterns(info.Origins)
+	if len(origins) == 0 {
+		origins = info.Origins
+	}
+	hosts := buildDisplayHosts(origins)
 	if len(hosts) == 0 {
 		lines = append(lines, "LAN address not detected. Use:")
 		lines = append(lines, fmt.Sprintf("http://localhost:%d", info.Port))
