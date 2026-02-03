@@ -11,7 +11,55 @@ import (
 	"github.com/creack/pty"
 )
 
-func (s *Session) startShell() (*exec.Cmd, *os.File, error) {
+type unixPTYDevice struct {
+	file *os.File
+}
+
+func (d *unixPTYDevice) Read(p []byte) (int, error) {
+	return d.file.Read(p)
+}
+
+func (d *unixPTYDevice) Write(p []byte) (int, error) {
+	return d.file.Write(p)
+}
+
+func (d *unixPTYDevice) Close() error {
+	return d.file.Close()
+}
+
+func (d *unixPTYDevice) Resize(cols, rows int) error {
+	if cols <= 0 || rows <= 0 {
+		return nil
+	}
+	return pty.Setsize(d.file, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
+}
+
+type execShellCommand struct {
+	cmd *exec.Cmd
+}
+
+func (c *execShellCommand) PID() int {
+	if c == nil || c.cmd == nil || c.cmd.Process == nil {
+		return 0
+	}
+	return c.cmd.Process.Pid
+}
+
+func (c *execShellCommand) Kill() error {
+	if c == nil || c.cmd == nil || c.cmd.Process == nil {
+		return nil
+	}
+	return c.cmd.Process.Kill()
+}
+
+func (c *execShellCommand) Wait() error {
+	if c == nil || c.cmd == nil {
+		return nil
+	}
+	return c.cmd.Wait()
+}
+
+func (s *Session) startShell() (shellCommand, ptyDevice, error) {
 	shell := strings.TrimSpace(s.shell)
 	useBash := shell == "" || shell == "bash" || strings.HasSuffix(shell, "/bash")
 
@@ -42,7 +90,7 @@ func (s *Session) startShell() (*exec.Cmd, *os.File, error) {
 		_ = pty.Setsize(ptyFile, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
 	}
 
-	return cmd, ptyFile, nil
+	return &execShellCommand{cmd: cmd}, &unixPTYDevice{file: ptyFile}, nil
 }
 
 func (s *Session) ensureBashRC() (string, error) {

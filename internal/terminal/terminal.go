@@ -3,12 +3,9 @@ package terminal
 import (
 	"errors"
 	"fmt"
-	"os"
-	"os/exec"
+	"io"
 	"sync"
 	"time"
-
-	"github.com/creack/pty"
 )
 
 type Config struct {
@@ -20,8 +17,8 @@ type Config struct {
 
 type Session struct {
 	mu              sync.Mutex
-	ptyFile         *os.File
-	cmd             *exec.Cmd
+	pty             ptyDevice
+	cmd             shellCommand
 	workDir         string
 	shell           string
 	bashRCPath      string
@@ -35,6 +32,17 @@ type Session struct {
 	writeMu         sync.Mutex
 	closeOnce       sync.Once
 	closed          bool
+}
+
+type ptyDevice interface {
+	io.ReadWriteCloser
+	Resize(cols, rows int) error
+}
+
+type shellCommand interface {
+	PID() int
+	Kill() error
+	Wait() error
 }
 
 func NewSession(cfg Config) (*Session, error) {
@@ -65,15 +73,13 @@ func CheckShell(workDir, shell string) error {
 		workDir: workDir,
 		shell:   shell,
 	}
-	cmd, ptyFile, err := s.startShell()
+	cmd, ptyHandle, err := s.startShell()
 	if err != nil {
 		return err
 	}
-	_ = ptyFile.Close()
-	if cmd.Process != nil {
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
-	}
+	_ = ptyHandle.Close()
+	_ = cmd.Kill()
+	_ = cmd.Wait()
 	return nil
 }
 
@@ -98,14 +104,14 @@ func (s *Session) WriteInput(data []byte) error {
 	defer s.writeMu.Unlock()
 
 	s.mu.Lock()
-	ptyFile := s.ptyFile
+	ptyHandle := s.pty
 	s.mu.Unlock()
 
-	if ptyFile == nil {
+	if ptyHandle == nil {
 		return errors.New("shell not ready")
 	}
 
-	_, err := ptyFile.Write(data)
+	_, err := ptyHandle.Write(data)
 	return err
 }
 
@@ -117,14 +123,14 @@ func (s *Session) Resize(cols, rows int) error {
 	s.mu.Lock()
 	s.lastCols = cols
 	s.lastRows = rows
-	ptyFile := s.ptyFile
+	ptyHandle := s.pty
 	s.mu.Unlock()
 
-	if ptyFile == nil {
+	if ptyHandle == nil {
 		return nil
 	}
 
-	return pty.Setsize(ptyFile, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
+	return ptyHandle.Resize(cols, rows)
 }
 
 func (s *Session) Close() {
@@ -135,14 +141,14 @@ func (s *Session) Close() {
 	}
 	s.closed = true
 	cmd := s.cmd
-	ptyFile := s.ptyFile
+	ptyHandle := s.pty
 	s.mu.Unlock()
 
-	if ptyFile != nil {
-		_ = ptyFile.Close()
+	if ptyHandle != nil {
+		_ = ptyHandle.Close()
 	}
-	if cmd != nil && cmd.Process != nil {
-		_ = cmd.Process.Kill()
+	if cmd != nil {
+		_ = cmd.Kill()
 	}
 }
 
@@ -152,14 +158,14 @@ func (s *Session) runLoop() {
 			s.closeChannels()
 			return
 		}
-		cmd, ptyFile, err := s.startShell()
+		cmd, ptyHandle, err := s.startShell()
 		if err != nil {
 			s.emitStatus(fmt.Sprintf("Shell start failed: %v", err))
 			time.Sleep(2 * time.Second)
 			continue
 		}
 
-		s.setPTY(cmd, ptyFile)
+		s.setPTY(cmd, ptyHandle)
 		s.emitStatus("Shell started.")
 
 		done := make(chan error, 1)
@@ -167,8 +173,8 @@ func (s *Session) runLoop() {
 			done <- cmd.Wait()
 		}()
 
-		s.readLoop(ptyFile)
-		_ = ptyFile.Close()
+		s.readLoop(ptyHandle)
+		_ = ptyHandle.Close()
 		<-done
 
 		s.clearPTY()
@@ -188,10 +194,10 @@ func (s *Session) runLoop() {
 	}
 }
 
-func (s *Session) readLoop(ptyFile *os.File) {
+func (s *Session) readLoop(reader io.Reader) {
 	buf := make([]byte, 4096)
 	for {
-		n, err := ptyFile.Read(buf)
+		n, err := reader.Read(buf)
 		if n > 0 {
 			chunk := make([]byte, n)
 			copy(chunk, buf[:n])
@@ -224,17 +230,17 @@ func (s *Session) emitStatus(message string) {
 	}
 }
 
-func (s *Session) setPTY(cmd *exec.Cmd, ptyFile *os.File) {
+func (s *Session) setPTY(cmd shellCommand, ptyHandle ptyDevice) {
 	s.mu.Lock()
 	s.cmd = cmd
-	s.ptyFile = ptyFile
+	s.pty = ptyHandle
 	s.mu.Unlock()
 }
 
 func (s *Session) clearPTY() {
 	s.mu.Lock()
 	s.cmd = nil
-	s.ptyFile = nil
+	s.pty = nil
 	s.mu.Unlock()
 }
 

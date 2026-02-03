@@ -10,16 +10,16 @@ type ProcessInfo struct {
 func (s *Session) Reset() ([]ProcessInfo, error) {
 	s.mu.Lock()
 	cmd := s.cmd
-	ptyFile := s.ptyFile
+	ptyHandle := s.pty
 	s.mu.Unlock()
 
-	if cmd == nil || cmd.Process == nil {
+	if cmd == nil || cmd.PID() <= 0 {
 		return nil, errors.New("shell not ready")
 	}
 
-	if ptyFile != nil {
-		_ = ptyFile.Close()
+	if ptyHandle != nil {
+		_ = ptyHandle.Close()
 	}
 
-	return terminateProcessTree(cmd)
+	return terminateProcessTree(cmd.PID())
 }

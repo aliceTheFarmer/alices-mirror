@@ -24,11 +24,7 @@ type windowsProcessInfo struct {
 	Name      string `json:"Name"`
 }
 
-func terminateProcessTree(cmd *exec.Cmd) ([]ProcessInfo, error) {
-	if cmd == nil || cmd.Process == nil {
-		return nil, errors.New("shell not ready")
-	}
-	pid := cmd.Process.Pid
+func terminateProcessTree(pid int) ([]ProcessInfo, error) {
 	if pid <= 0 {
 		return nil, errors.New("shell not ready")
 	}
