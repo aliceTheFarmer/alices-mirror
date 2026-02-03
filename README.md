@@ -10,7 +10,7 @@ Serve a shared, persistent terminal over HTTP on your LAN with a mobile-friendly
 </p>
 
 ## Status
-- v2.0.1 (share mode, LAN discovery, daemon mode, shell reset, title integration)
+- v2.0.2 (watch-only access control, ConPTY on Windows, official mobile binary)
 
 ## Highlights
 - Shared, persistent PTY session over HTTP and WebSocket with multiple clients.

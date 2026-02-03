@@ -71,3 +71,6 @@ burp/burpbrowser-profile
 
 # Local agent instructions
 AGENTS.md
+
+# Release artifacts
+Release/alices-mirror_mobile

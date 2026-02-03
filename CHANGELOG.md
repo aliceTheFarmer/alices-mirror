@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.0.2 - 2026-02-03
+- Added `--user-level` to set per-IP access levels (0=interact, 1=watch-only).
+- Watch-only clients now get a read-only UI and cannot send input/reset/resize.
+- Added official mobile (Android arm64 / Termux) release binary: `alices-mirror_mobile`.
+- Windows: switched PTY backend to ConPTY.
+
 ## v2.0.1 - 2026-02-02
 - Added `-s, --share` to start the server in the background and attach this terminal to the shared shell.
 - Kept `-sh` as a backward-compatible alias for `--share`.
