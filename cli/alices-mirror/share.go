@@ -21,6 +21,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"alices-mirror/internal/app"
+	"alices-mirror/internal/server"
 )
 
 const (
@@ -96,7 +97,11 @@ func attachOwnerShell(cfg app.Config, ownerToken string) error {
 		return errors.New("--share requires an interactive terminal on stdin")
 	}
 
-	ownerURL, err := buildOwnerWSURL(cfg.Origins, cfg.Port, ownerToken)
+	binds := server.ExpandBindPatterns(cfg.Origins)
+	if len(binds) == 0 {
+		binds = cfg.Origins
+	}
+	ownerURL, err := buildOwnerWSURL(binds, cfg.Port, ownerToken)
 	if err != nil {
 		return err
 	}
