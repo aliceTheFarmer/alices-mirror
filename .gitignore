@@ -51,23 +51,10 @@ coverage.xml
 # Docker
 .docker/
 .dockerignore.generated
-Dockerfile.*.tmp
 *.tar
 
-# powa-chromium profiles
-powa-chromium_profile/
-powa-chromium_profile_*/
 
-# Local tooling profiles
-**/profile/
-**/xdg_config/
-**/xdg_cache/
-**/xdg_runtime/
-**/logs/
-**/cache/
 
-# Burp Suite
-burp/burpbrowser-profile
 
 # Local agent instructions
 AGENTS.md
